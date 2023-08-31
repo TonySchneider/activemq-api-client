@@ -8,7 +8,7 @@ with open('requirements.txt') as f:
 
 setup(
     name='activemq-api-client',
-    version='0.0.2',
+    version='0.0.3',
     packages=find_packages(),
     install_requires=required,
     author='Tony Schneider',
