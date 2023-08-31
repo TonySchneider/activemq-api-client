@@ -2,12 +2,31 @@ import json
 import xml.etree.ElementTree as ET
 from typing import List, Union
 
-from connector import Connector
+from .connector import Connector
 
 
 class ActiveMQClient:
     def __init__(self, url: str, username: str, password: str, retries: int = 3, backoff_factor: float = 0.3):
         self._connector = Connector(url, username, password, retries, backoff_factor)
+
+    def get_connection_details(self, client_id: str) -> Union[dict, None]:
+        connections = self.get_connections_details()
+        for connection in connections:
+            if connection['clientId'] == client_id:
+                return connection
+        return None
+
+    def get_broker_details(self) -> Union[dict, None]:
+        endpoint = "/admin/xml/brokers.jsp"
+        response = self._connector.send_request("GET", endpoint)
+        tree = ET.fromstring(response.content)
+        broker = tree.find('broker')
+        if broker:
+            details = {
+                'name': broker.find('name').text,
+            }
+            return details
+        return None
 
     def get_queues_details(self) -> List[dict]:
         endpoint = "/admin/xml/queues.jsp"
@@ -23,6 +42,21 @@ class ActiveMQClient:
             }
             queues.append(details)
         return queues
+
+    def get_queue_details(self, queue_name: str) -> Union[dict, None]:
+        endpoint = f"/admin/xml/queues.jsp?queueName={queue_name}"
+        response = self._connector.send_request("GET", endpoint)
+        tree = ET.fromstring(response.content)
+        queue = tree.find('queue')
+        if queue:
+            details = {
+                'name': queue.find('name').text,
+                'consumerCount': int(queue.find('consumerCount').text),
+                'enqueueCount': int(queue.find('enqueueCount').text),
+                'dequeueCount': int(queue.find('dequeueCount').text),
+            }
+            return details
+        return None
 
     def get_queue_consumer_count(self, queue_name: str) -> Union[int, None]:
         queues = self.get_queues_details()
@@ -72,6 +106,20 @@ class ActiveMQClient:
             topics.append(details)
         return topics
 
+    def get_topic_details(self, topic_name: str) -> Union[dict, None]:
+        endpoint = f"/admin/xml/topics.jsp?topicName={topic_name}"
+        response = self._connector.send_request("GET", endpoint)
+        tree = ET.fromstring(response.content)
+        topic = tree.find('topic')
+        if topic:
+            details = {
+                'name': topic.find('name').text,
+                'consumerCount': int(topic.find('consumerCount').text),
+                'enqueueCount': int(topic.find('enqueueCount').text),
+            }
+            return details
+        return None
+
     def get_subscribers_details(self) -> List[dict]:
         endpoint = "/admin/xml/subscribers.jsp"
         response = self._connector.send_request("GET", endpoint)
@@ -86,40 +134,9 @@ class ActiveMQClient:
             subscribers.append(details)
         return subscribers
 
-    def send_message(self, queue_name: str, message: str) -> str:
-        endpoint = f"/api/message/{queue_name}?type=queue"
-        response = self._connector.send_request("POST", endpoint, data=message)
-        return response.text
-
-    def receive_message(self, queue_name: str) -> str:
-        endpoint = f"/api/message/{queue_name}?type=queue"
-        response = self._connector.send_request("GET", endpoint)
-        return response.text
-
-    def acknowledge_message(self, queue_name: str, message_id: str) -> str:
-        endpoint = f"/api/message/{queue_name}?type=queue&messageSelector=JMSMessageID='{message_id}'"
-        response = self._connector.send_request("GET", endpoint)
-        return response.text
-
-    def browse_messages(self, queue_name: str) -> List[dict]:
-        endpoint = f"/api/jolokia/exec/org.apache.activemq:type=Broker,brokerName=localhost,destinationType=Queue," \
-                   f"destinationName={queue_name}/browse()"
-
-        response = self._connector.send_request("GET", endpoint)
-        messages = json.loads(response.text)
-        return messages
-
-    def list_queues(self) -> List[str]:
-        endpoint = "/api/jolokia/read/org.apache.activemq:type=Broker,brokerName=localhost/Queues"
-        response = self._connector.send_request("GET", endpoint)
-        queues = json.loads(response.text)["value"]
-        return queues
-
-    def list_topics(self) -> List[str]:
-        endpoint = "/api/jolokia/read/org.apache.activemq:type=Broker,brokerName=localhost/Topics"
-        response = self._connector.send_request("GET", endpoint)
-        topics = json.loads(response.text)["value"]
-        return topics
+    def get_subscriber_details(self, client_id: str) -> List[dict]:
+        subscribers = self.get_subscribers_details()
+        return [subscriber for subscriber in subscribers if subscriber['clientId'] == client_id]
 
     def close(self):
         self._connector.close()
